@@ -1,0 +1,216 @@
+//blink
+#include <ESP8266WiFi.h>
+#include <WiFiClient.h>
+#include <ESP8266WebServer.h>
+#include <ESP8266mDNS.h>
+#include <PubSubClient.h>
+
+//#include "freertos/FreeRTOS.h"
+
+#include <uri/UriBraces.h>
+#include <uri/UriRegex.h>
+
+#ifndef STASSID
+#define STASSID "Vivo.T23_fi48"
+#define STAPSK  "fghi45678"
+//const char* ssid = "Vivo.T23_fi48";  //Nama Wifi
+//const char* password = "fghi45678"; // pass wifi
+
+#endif
+
+const char *ssid = STASSID;
+const char *password = STAPSK;
+
+ESP8266WebServer server(80);
+
+// ======== MQTT init ========= MQTT init ========= MQTT init ========= MQTT init ========= MQTT init ========= MQTT init ========= MQTT init ========= MQTT init =
+
+WiFiClient    MQ_espClient                              ;
+PubSubClient  MQ_Client(MQ_espClient)                   ;
+//const char* MQ_Server     = "27407e6a323147bc8071e73879a67c6a.s1.eu.hivemq.cloud"  ;
+//const char* brUser        = "Ar13527"                 ;
+//const char* brPass        = "531rA00727"              ;
+//const char* MQ_Server     = "mqtt.eclipseprojects.io" ;
+//const char* MQ_Server     = "test.mosquitto.org"      ;
+//const char* MQ_Server     = "broker.mqttdashboard.com"; //test reyax ,test.mosca.io:80 , dioty.io
+const char*   MQ_Server     = "broker.hivemq.com"       ;
+String        MQ_UnixKeySub = "x9b"                      ; 
+char          MQ_UxChAr[50]                             ;
+String        MQ_UnixSub    = ""                        ;
+int           MQ_ChkLoop    = 5000                        ;
+int           MQ_ChkStart   = 0                        ;
+
+// ======== MQTT init ========= MQTT init ========= MQTT init ========= MQTT init ========= MQTT init ========= MQTT init ========= MQTT init ========= MQTT init =
+
+
+void A(){FnA();} 
+String yGetCL0 = "";
+void FnA() {
+      //Serial.print("Task09: WServer->handle: ONLY, is running on core ");      //get on core0            
+      Serial.println("Handled!... A");        
+      String message = " #200 Handle #200 \n\n";
+      message += "URI: ";
+      message += server.uri();
+      message += " # Method: ";
+      message += (server.method() == HTTP_GET) ? "GET" : "POST";
+      message += " # Argum : ";
+      message += server.args(); 
+      message += " #RemoteControl IP address : ";
+      message += server.client().remoteIP().toString();      yGetCL0 = server.arg(0); // if not save to eeprom, make it tobe master var for Key                            
+      //SignalKey = 1;     
+      Serial.println(message + " # Argum: " + yGetCL0); 
+      server.send(200, "text/plain", yGetCL0 + "^--" ); //cors enable
+}
+
+
+void setup(void) {
+  Serial.begin(115200);
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+  Serial.println("");
+  // Wait for connection
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("");
+  Serial.print("Connected to ");
+  Serial.println(ssid);
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+
+  if (MDNS.begin("esp8266")) {
+    Serial.println("MDNS responder started");
+  }
+
+  //server.on(F("/D"),[](){ Serial.println("/D"); } ); // *eg*http://192.168.0.100/D butErr=> http://192.168.0.100/D/   
+  //server.on(F("/G"),G ); // *eg*http://192.168.0.100/G    
+  server.on("/A",FnA); // argum of GET *eg*http://192.168.0.100/A?id=Test
+  server.on(F("/"), []() { // *eg*http://192.168.0.100/
+    server.send(200, "text/plain", "hello from esp8266!");
+  });
+
+  server.on(UriBraces("/users/{}"), []() { // *eg*http://192.168.0.100/users/andi ==> User: 'andi'
+    String user = server.pathArg(0);
+    server.send(200, "text/plain", "User: '" + user + "'");
+  });
+
+  server.on(UriRegex("^\\/userx\\/([0-9]+)\\/devices\\/([0-9]+)$"), []() {  // *eg*http://192.168.0.100/userx/1234/devices/666 ==> Userx: '1234' and Device: '666' , 
+                                                                            // note = 1234 and 666 must be numeric like define in regex' its like a filter
+    String user = server.pathArg(0);
+    String device = server.pathArg(1);
+    server.send(200, "text/plain", "Userx: '" + user + "' and Device: '" + device + "'");
+  });
+
+  server.begin();
+  Serial.println("HTTP server started");
+  server.enableCORS(true);
+  
+  MQ_Client.setServer(MQ_Server, 1883);  
+  MQ_Client.setCallback(MQ_Callback);
+  pinMode(LED_BUILTIN, OUTPUT);
+}
+
+/* */int MqRecon=0;
+void loop(void) {    
+  if (! MQ_Client.connected()) {
+   MqRecon= MqRecon + 1;
+   if (MqRecon < 5) {
+      MQ_rconnect();
+      Serial.print("Mq Recon = " + String(MqRecon) ); Serial.println("");
+   } //else { mPrint("Mq Recon off > 5" ); }
+  }
+  
+  MQ_Client.loop();
+  server.handleClient();
+  Loop2_Blink();
+}
+
+/* */int Blink1=0;
+void Loop2_Blink(void) { 
+  int Bli_Df = 5000;
+  if (Blink1 > 10000) {  Blink1 = 0; }
+  Blink1++;
+  if (Blink1  ==  1   ) { digitalWrite(LED_BUILTIN, HIGH); Serial.println("== ON ==" ); Serial.println( Blink1 % (Bli_Df*2)); }
+  if (Blink1  ==  3000 ) { digitalWrite(LED_BUILTIN, LOW ); Serial.println(".. OFF .."); Serial.println( Blink1 % (Bli_Df*2)); }
+  //if (Blink1 % (Bli_Df*2) == (Bli_Df+150) ) { Serial.print(Blink1);  Serial.print(" = ");  Serial.println(Blink1 % (Bli_Df*2)); }
+}
+
+String yMQtt_msg = "";
+String yRtnMsg = "";
+
+void MQ_Callback(char* topic, byte* message, unsigned int length) {
+  Serial.print("Message arrived on topic: ");
+  Serial.print(topic);
+  Serial.print(". Message: ");
+  String messageTemp;
+  
+  for (int i = 0; i < length; i++) {
+    //Serial.print((char)message[i]);
+    messageTemp += (char)message[i];
+  }
+      
+  yMQtt_msg = messageTemp;
+  Serial.println();
+  Serial.print( "=====MQTT Receive======> " );Serial.println( yMQtt_msg );
+  //loopLED("MQTTApp", yMQtt_msg );
+  
+   messageTemp = messageTemp + "^"+ yRtnMsg; yRtnMsg="";
+  Serial.println();
+  char  MsgBufArr[70]; 
+  messageTemp.toCharArray(MsgBufArr, 70);  
+  MQ_UnixSub = MQ_UnixKeySub + "_1"  ; MQ_UnixSub.toCharArray(MQ_UxChAr, 50); MQ_Client.publish(MQ_UxChAr,MsgBufArr); // sub = x9 + _1 = "x9_1" to publish from device
+  Serial.print(MQ_UnixSub);   Serial.print( " ====MQTT SendBack======> " );Serial.println( messageTemp );
+  Serial.println();  Serial.println();
+ 
+     Serial.print(" Local IP :") ;
+     Serial.println(WiFi.localIP());    
+     
+  // Feel free to add more if statements to control more GPIOs with MQTT
+
+  // If a message is received on the topic esp32/output, you check if the message is either "on" or "off". 
+  // Changes the output state according to the message
+}
+
+void MQ_rconnect() {
+    //if (MQ_Client.connect(clientId.c_str(), "Ar1352x", "531rA0072x")) {
+    if (MQ_Client.connect("")) {                  
+      Serial.print(" , connected! to : ");
+      Serial.println(MQ_Server);
+      Serial.print(" Local IP :") ;
+      //Serial.println(WiFi.localIP());    
+       
+      //subscribe to 3topic unix
+      MQ_UnixSub = MQ_UnixKeySub + "@1"  ; MQ_UnixSub.toCharArray(MQ_UxChAr, 50); MQ_Client.subscribe(MQ_UxChAr); // sub = x9+@1 = "x9@1" subcribe
+      MQ_UnixSub = MQ_UnixKeySub + "@R2" ; MQ_UnixSub.toCharArray(MQ_UxChAr, 50); MQ_Client.subscribe(MQ_UxChAr);
+      MQ_UnixSub = MQ_UnixKeySub + "@pR3"; MQ_UnixSub.toCharArray(MQ_UxChAr, 50); MQ_Client.subscribe(MQ_UxChAr);      
+    } else {
+      Serial.print("failed, rc=");
+      Serial.print( MQ_Client.state());
+      Serial.println(" MQTT not Connect, try again in 5 seconds");
+      // Wait 5 seconds before retrying
+      delay(5000);
+    }
+  }
+
+
+void MQ_Test_PUBL() {
+  int MQ_Test_in = 1;
+  MQ_Test_in = Serial.read();
+  if ( MQ_Test_in > 10){   Serial.print( " input MQ serial.read:" ); Serial.println(MQ_Test_in); } // must 15 couse blank input return 10
+  if ( MQ_Test_in == 65) { //A
+      //dtostrf(MQ_Test_in, 1, 2, MQ_Test_in2);
+      MQ_UnixSub = MQ_UnixKeySub + "_1"  ; MQ_UnixSub.toCharArray(MQ_UxChAr, 50); MQ_Client.publish(MQ_UxChAr,"AAaa"); // sub = x7ak9sw2_fr@1
+      Serial.println(MQ_UnixSub  + "AA" );
+      //sprintf(MQ_Test_in2,  "halloo %d", MQ_Test_in);     
+  }
+  if ( MQ_Test_in == 66) { //B 
+      MQ_UnixSub = MQ_UnixKeySub + "_R2"  ; MQ_UnixSub.toCharArray(MQ_UxChAr, 50); MQ_Client.publish(MQ_UxChAr,"BBbb"); // sub = x7ak9sw2_fr@1
+      Serial.println(MQ_UnixSub  + "BB" );            
+       
+  }  
+ if ( MQ_Test_in == 67) { //C 
+      MQ_UnixSub = MQ_UnixKeySub + "_pR3"  ; MQ_UnixSub.toCharArray(MQ_UxChAr, 50); MQ_Client.publish(MQ_UxChAr,"CCcc"); // sub = x7ak9sw2_fr@1
+      Serial.println(MQ_UnixSub  + "CC" );            
+ }
+}
